@@ -1528,9 +1528,13 @@ static bool gamepad_event(int event) {
     return true;   // nothing else does anything while learning
   }
 
-  // finished: ESC or ENTER closes the dialog
-  if(event == MENU_EVENT_BACK || event == MENU_EVENT_SELECT)
+  // finished: ESC or ENTER closes the dialog and the OSD, as the
+  // screen says ("Press ESC to close")
+  if(event == MENU_EVENT_BACK || event == MENU_EVENT_SELECT) {
     menu_pop();
+    menu_timer_enable(false);
+    osd_enable(OSD_INVISIBLE);
+  }
   return true;
 }
 
