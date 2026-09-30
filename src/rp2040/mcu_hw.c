@@ -12,6 +12,7 @@
 
 #include <stdio.h>
 #include <strings.h>
+#include <string.h>
 #include "tusb.h"
 #include "pico/multicore.h"
 #include "hardware/clocks.h"
@@ -524,6 +525,43 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
     usb_debugf("Error: cannot request report");
 
   usb_check_devices();
+}
+
+/* ========================================================================= */
+/* =======                   settings in flash                         ===== */
+/* ========================================================================= */
+
+// One flash sector for small settings. The last two sectors are left to
+// btstack, which keeps its bluetooth pairing keys there.
+#define SETTINGS_OFFSET (PICO_FLASH_SIZE_BYTES - 3*FLASH_SECTOR_SIZE)
+
+bool mcu_hw_settings_read(void *buf, int len) {
+  if(len > FLASH_SECTOR_SIZE) return false;
+  memcpy(buf, (const void*)(XIP_BASE + SETTINGS_OFFSET), len);
+  return true;
+}
+
+bool mcu_hw_settings_write(const void *buf, int len) {
+  if(len > FLASH_SECTOR_SIZE) return false;
+
+  // programming works in whole pages
+  int size = (len + FLASH_PAGE_SIZE - 1) & ~(FLASH_PAGE_SIZE - 1);
+  uint8_t *page = pvPortMalloc(size);
+  if(!page) return false;
+  memset(page, 0xff, size);
+  memcpy(page, buf, len);
+
+  // core #1 is unused, so it's enough to keep this core off the flash
+  vTaskSuspendAll();
+  uint32_t ints = save_and_disable_interrupts();
+  flash_range_erase(SETTINGS_OFFSET, FLASH_SECTOR_SIZE);
+  flash_range_program(SETTINGS_OFFSET, page, size);
+  restore_interrupts(ints);
+  xTaskResumeAll();
+  vPortFree(page);
+
+  // read back to make sure it's there
+  return memcmp((const void*)(XIP_BASE + SETTINGS_OFFSET), buf, len) == 0;
 }
 
 // Invoked when device with hid interface is un-mounted

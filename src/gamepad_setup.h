@@ -2,7 +2,8 @@
   gamepad_setup.h
 
   "Setup Gamepad": learn a gamepad's layout by asking the user to press
-  each control once, and save it to the SD card per USB VID:PID. A saved
+  each control once, and save it per USB VID:PID in the MCU's flash (or
+  on the SD card where the MCU has no settings area). A saved
   setup overrides the automatic (SDL database / HID descriptor) mapping
   for that gamepad only. "Remove Gamepad Setup" deletes it again, which
   gives the gamepad back to automatic detection.
@@ -15,7 +16,7 @@
 #include <stdbool.h>
 #include "hidparser.h"
 
-// the file lives in this folder on the SD card
+// SD card fallback: the file lives in this folder
 #define GAMEPAD_SETUP_DIR   "PCE"
 #define GAMEPAD_SETUP_FILE  "gamepad.ini"
 
@@ -42,7 +43,7 @@
 #define GP_PHASE_SAVED     4
 #define GP_PHASE_REMOVED   5
 #define GP_PHASE_NOTFOUND  6  // remove: this gamepad had no saved setup
-#define GP_PHASE_FAILED    7  // SD card error
+#define GP_PHASE_FAILED    7  // saving failed
 #define GP_PHASE_CANCELLED 8
 
 #define GP_MODE_SETUP   0

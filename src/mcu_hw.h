@@ -27,6 +27,11 @@ void mcu_hw_usb_sector_read(void *buffer, int sector, int count);
 void mcu_hw_upload_core(char *name);
 bool mcu_hw_usb_msc_present(void);
 
+// small persistent settings area in the MCU's own flash (e.g. gamepad
+// setups). Returns false if the MCU has none, callers then use the SD card.
+bool mcu_hw_settings_read(void *buf, int len);
+bool mcu_hw_settings_write(const void *buf, int len);
+
 // received a byte via the io port (e.g. rs232 from core)
 void mcu_hw_port_byte(unsigned char);
 

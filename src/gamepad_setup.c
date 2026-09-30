@@ -10,7 +10,10 @@
   - a hat value in the low nibble of a byte     (d-pads reported as a hat)
   - a byte crossing a threshold                 (sticks, d-pads as axes)
 
-  Setups are kept in RAM and in /sd/PCE/gamepad.ini, one line per gamepad:
+  Setups are kept in RAM and saved in the MCU's own flash (a settings
+  sector, see mcu_hw_settings_write()), so they work with every core and
+  survive power cycles and firmware updates. MCUs without that use
+  /sd/PCE/gamepad.ini instead, one line per gamepad:
 
     VVVV:PPPP k.oo.mm.vv k.oo.mm.vv ...   (GP_CTRLS bindings, hex)
 
@@ -31,6 +34,7 @@
 #include "osd.h"
 #include "menu.h"
 #include "debug.h"
+#include "mcu_hw.h"
 
 #define GP_MAX_PADS     8   // saved setups
 #define GP_MAX_SLOTS    4   // gamepads tracked at once
@@ -128,11 +132,70 @@ static bool gp_parse_line(char *line, gp_pad_t *pad) {
   return true;
 }
 
+// MCUs without a settings area in their own flash use the SD card
+__attribute__((weak)) bool mcu_hw_settings_read(void *buf, int len) {
+  (void)buf; (void)len; return false;
+}
+__attribute__((weak)) bool mcu_hw_settings_write(const void *buf, int len) {
+  (void)buf; (void)len; return false;
+}
+
+#define GP_FLASH_MAGIC 0x31535047   // "GPS1"
+
+typedef struct {
+  uint32_t magic;
+  uint16_t count;
+  uint16_t pad_size;   // sizeof(gp_pad_t), guards against format changes
+  gp_pad_t pads[GP_MAX_PADS];
+} gp_flash_t;
+
+static bool gp_load_flash(void) {
+  gp_flash_t *f = pvPortMalloc(sizeof(gp_flash_t));
+  if(!f) return false;
+
+  bool ok = mcu_hw_settings_read(f, sizeof(gp_flash_t));
+  if(ok) {
+    // erased or foreign contents just mean "no setups"
+    if(f->magic == GP_FLASH_MAGIC && f->pad_size == sizeof(gp_pad_t) &&
+       f->count <= GP_MAX_PADS) {
+      num_pads = f->count;
+      memcpy(pads, f->pads, sizeof(pads));
+    }
+  }
+  vPortFree(f);
+  return ok;
+}
+
+static bool gp_save_flash(bool *ok) {
+  gp_flash_t *f = pvPortMalloc(sizeof(gp_flash_t));
+  if(!f) { *ok = false; return true; }
+
+  memset(f, 0, sizeof(gp_flash_t));
+  f->magic = GP_FLASH_MAGIC;
+  f->count = num_pads;
+  f->pad_size = sizeof(gp_pad_t);
+  memcpy(f->pads, pads, sizeof(pads));
+
+  // a false return from a real flash is a failed write; the weak
+  // default can't be told apart from that, so check for flash first
+  uint32_t probe;
+  bool has_flash = mcu_hw_settings_read(&probe, sizeof(probe));
+  if(has_flash) *ok = mcu_hw_settings_write(f, sizeof(gp_flash_t));
+  vPortFree(f);
+  return has_flash;
+}
+
 void gamepad_setup_init(void) {
   FIL fil;
   char line[160];
 
   num_pads = 0;
+  if(gp_load_flash()) {
+    usb_debugf("Gamepad setups in flash: %d", num_pads);
+    generation++;
+    return;
+  }
+
   sdc_lock();
   if(f_open(&fil, gp_filename(false), FA_OPEN_EXISTING | FA_READ) == FR_OK) {
     while(num_pads < GP_MAX_PADS && f_gets(line, sizeof(line), &fil)) {
@@ -151,6 +214,11 @@ void gamepad_setup_init(void) {
 static bool gp_save(void) {
   FIL fil;
   bool ok = false;
+
+  if(gp_save_flash(&ok)) {
+    generation++;
+    return ok;
+  }
 
   sdc_lock();
   f_mkdir(gp_filename(true));  // fails harmlessly if it exists

@@ -1492,7 +1492,7 @@ static void gamepad_draw(void) {
     gamepad_draw_lines("This gamepad has no", "saved setup.", "Press ESC to close");
     break;
   case GP_PHASE_FAILED:
-    gamepad_draw_lines("Could not write to", "the SD card.", "Press ESC to close");
+    gamepad_draw_lines("Could not save the", "setup.", "Press ESC to close");
     break;
   default:
     gamepad_draw_lines("Cancelled.", "Press ESC to close", NULL);
