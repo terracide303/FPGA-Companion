@@ -35,6 +35,10 @@
 #define GP_CTRL_R      11
 #define GP_CTRLS       12
 
+// how many of them the setup asks for: the PC Engine pad needs the first
+// eight. Raise to GP_CTRLS for III/IV/L/R (e.g. the 6-button pad).
+#define GP_CTRLS_ASKED  8
+
 // what the setup dialog is doing right now
 #define GP_PHASE_OFF       0
 #define GP_PHASE_IDLE      1  // "release all buttons", measuring the idle report

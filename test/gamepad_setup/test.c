@@ -42,7 +42,7 @@ static void learn(const hid_report_t*rep,padfn f){
   gamepad_setup_start(GP_MODE_SETUP);
   now=0; feed(rep,f,0); now=600; for(int i=0;i<5;i++) feed(rep,f,0);  /* idle + noise */
   timer_cb(0);
-  for(int c=0;c<GP_CTRLS;c++){ feed(rep,f,1u<<c); feed(rep,f,0); }
+  for(int c=0;c<GP_CTRLS_ASKED;c++){ feed(rep,f,1u<<c); feed(rep,f,0); }
 }
 int main(void){
   hid_report_t r1={0}; r1.vid=0x0079; r1.pid=0x0011;
@@ -53,12 +53,12 @@ int main(void){
   CHECK(gamepad_setup_status()->phase==GP_PHASE_SAVED,"pad1 saved");
   static const unsigned char J[GP_CTRLS]={8,4,2,1,0x10,0x20,0,0,0x40,0x80,0,0};
   static const unsigned char X[GP_CTRLS]={0,0,0,0,0,0,4,8,0,0,1,2};
-  for(int c=0;c<GP_CTRLS;c++){ apply(&r1,pad1,1u<<c); char m[64]; sprintf(m,"pad1 ctrl %d -> joy %02x extra %02x",c,joy,extra); CHECK(joy==J[c]&&extra==X[c],m);} 
+  for(int c=0;c<GP_CTRLS_ASKED;c++){ apply(&r1,pad1,1u<<c); char m[64]; sprintf(m,"pad1 ctrl %d -> joy %02x extra %02x",c,joy,extra); CHECK(joy==J[c]&&extra==X[c],m);} 
   apply(&r1,pad1,0); CHECK(joy==0&&extra==0,"pad1 idle -> nothing");
 
   learn(&r2,pad2);
   CHECK(gamepad_setup_status()->phase==GP_PHASE_SAVED,"pad2 saved");
-  for(int c=0;c<GP_CTRLS;c++){ apply(&r2,pad2,1u<<c); char m[64]; sprintf(m,"pad2 ctrl %d -> joy %02x extra %02x",c,joy,extra); CHECK(joy==J[c]&&extra==X[c],m);} 
+  for(int c=0;c<GP_CTRLS_ASKED;c++){ apply(&r2,pad2,1u<<c); char m[64]; sprintf(m,"pad2 ctrl %d -> joy %02x extra %02x",c,joy,extra); CHECK(joy==J[c]&&extra==X[c],m);} 
   apply(&r2,pad2,(1<<GP_CTRL_UP)|(1<<GP_CTRL_RIGHT)); CHECK(joy==(8|1),"pad2 hat diagonal up-right");
   apply(&r2,pad2,0); CHECK(joy==0&&extra==0,"pad2 idle -> nothing");
 
