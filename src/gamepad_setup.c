@@ -404,7 +404,7 @@ static void gp_finish(void) {
 }
 
 static void gp_next_step(void) {
-  if(++status.step >= GP_CTRLS_ASKED) gp_finish();
+  if(++status.step >= GP_CTRLS) gp_finish();
   else status.phase = GP_PHASE_PRESS;
 }
 
