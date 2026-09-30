@@ -533,35 +533,107 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
 
 // One flash sector for small settings. The last two sectors are left to
 // btstack, which keeps its bluetooth pairing keys there.
+//
+// The sector is used as a log of 256-byte pages: every save programs the
+// next empty page and the newest one counts. Programming a page takes about
+// 1 ms with interrupts off. Erasing the sector takes ~50 ms, long enough for
+// USB devices to miss their 1 ms frames and go to sleep (a keyboard then
+// stops answering until it's replugged, seen on hardware 2026-09-30), so the
+// erase only happens in mcu_hw_settings_compact() at power-up, before USB
+// starts -- or, if more than 15 saves happen without a power cycle, once
+// during a save.
 #define SETTINGS_OFFSET (PICO_FLASH_SIZE_BYTES - 3*FLASH_SECTOR_SIZE)
+#define SETTINGS_PAGES  (FLASH_SECTOR_SIZE / FLASH_PAGE_SIZE)
+#define SETTINGS_MAGIC  0x31475453   // "STG1", marks a used page
+#define SETTINGS_MAX    (FLASH_PAGE_SIZE - 4)
 
-bool mcu_hw_settings_read(void *buf, int len) {
-  if(len > FLASH_SECTOR_SIZE) return false;
-  memcpy(buf, (const void*)(XIP_BASE + SETTINGS_OFFSET), len);
-  return true;
+static const uint8_t *settings_page(int n) {
+  return (const uint8_t*)(XIP_BASE + SETTINGS_OFFSET + n * FLASH_PAGE_SIZE);
 }
 
-bool mcu_hw_settings_write(const void *buf, int len) {
-  if(len > FLASH_SECTOR_SIZE) return false;
+static uint32_t settings_page_magic(int n) {
+  uint32_t m;
+  memcpy(&m, settings_page(n), 4);
+  return m;
+}
 
-  // programming works in whole pages
-  int size = (len + FLASH_PAGE_SIZE - 1) & ~(FLASH_PAGE_SIZE - 1);
-  uint8_t *page = pvPortMalloc(size);
+// newest used page, -1 if none
+static int settings_newest(void) {
+  int newest = -1;
+  for(int n=0;n<SETTINGS_PAGES;n++)
+    if(settings_page_magic(n) == SETTINGS_MAGIC) newest = n;
+  return newest;
+}
+
+static bool settings_program(int n, const void *buf, int len, bool erase) {
+  uint8_t *page = pvPortMalloc(FLASH_PAGE_SIZE);
   if(!page) return false;
-  memset(page, 0xff, size);
-  memcpy(page, buf, len);
+  uint32_t magic = SETTINGS_MAGIC;
+  memset(page, 0xff, FLASH_PAGE_SIZE);
+  memcpy(page, &magic, 4);
+  memcpy(page+4, buf, len);
 
   // core #1 is unused, so it's enough to keep this core off the flash
   vTaskSuspendAll();
   uint32_t ints = save_and_disable_interrupts();
-  flash_range_erase(SETTINGS_OFFSET, FLASH_SECTOR_SIZE);
-  flash_range_program(SETTINGS_OFFSET, page, size);
+  if(erase) flash_range_erase(SETTINGS_OFFSET, FLASH_SECTOR_SIZE);
+  flash_range_program(SETTINGS_OFFSET + n * FLASH_PAGE_SIZE, page, FLASH_PAGE_SIZE);
   restore_interrupts(ints);
   xTaskResumeAll();
-  vPortFree(page);
 
-  // read back to make sure it's there
-  return memcmp((const void*)(XIP_BASE + SETTINGS_OFFSET), buf, len) == 0;
+  bool ok = memcmp(settings_page(n), page, FLASH_PAGE_SIZE) == 0;
+  vPortFree(page);
+  return ok;
+}
+
+bool mcu_hw_settings_read(void *buf, int len) {
+  if(len > SETTINGS_MAX) return false;
+  int n = settings_newest();
+  if(n < 0) memset(buf, 0xff, len);   // nothing saved: looks like erased flash
+  else      memcpy(buf, settings_page(n)+4, len);
+  return true;
+}
+
+bool mcu_hw_settings_write(const void *buf, int len) {
+  if(len > SETTINGS_MAX) return false;
+
+  // next empty page after the newest one
+  int n = settings_newest() + 1;
+  if(n < SETTINGS_PAGES) {
+    for(int i=0;i<FLASH_PAGE_SIZE;i++)
+      if(settings_page(n)[i] != 0xff) { n = SETTINGS_PAGES; break; }
+  }
+  if(n < SETTINGS_PAGES)
+    return settings_program(n, buf, len, false);
+
+  // sector full: erase and start over (the slow case, see above)
+  return settings_program(0, buf, len, true);
+}
+
+// power-up, before USB runs: if the log is getting full, move the newest
+// page to the start of a freshly erased sector
+static void mcu_hw_settings_compact(void) {
+  int n = settings_newest();
+  const uint8_t *src;
+
+  if(n >= 0) {
+    if(n < SETTINGS_PAGES/2) return;   // plenty of room left
+    src = settings_page(n)+4;
+  } else {
+    // no log page: either erased, or the first dev build's layout, which
+    // wrote the settings raw at the start of the sector. Carry that over.
+    bool blank = true;
+    for(int i=0;i<FLASH_SECTOR_SIZE && blank;i++)
+      if(settings_page(0)[i] != 0xff) blank = false;
+    if(blank) return;
+    src = settings_page(0);
+  }
+
+  uint8_t *copy = pvPortMalloc(SETTINGS_MAX);
+  if(!copy) return;
+  memcpy(copy, src, SETTINGS_MAX);
+  settings_program(0, copy, SETTINGS_MAX, true);
+  vPortFree(copy);
 }
 
 // Invoked when device with hid interface is un-mounted
@@ -2296,6 +2368,8 @@ void mcu_hw_init(void) {
     .role = TUSB_ROLE_HOST,
     .speed = TUSB_SPEED_AUTO
   };
+  // may erase flash, so it has to happen before USB is running
+  mcu_hw_settings_compact();
   tusb_init(BOARD_TUH_RHPORT, &host_init);
   
 #if (MISTLE_BOARD == 4) || (MISTLE_BOARD == 5) || (MISTLE_BOARD == 6)

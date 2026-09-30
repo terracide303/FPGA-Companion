@@ -20,6 +20,8 @@ fits the RP2040's RAM. Wired USB pads only.
 the `RPI-RP2` drive.
 
 **Status:** experimental. On hardware 2026-09-30: setup and save work on one
-gamepad. Not yet confirmed: keeping the setup over a power cycle, and ESC
-closing the OSD after "Saved". This file is rebuilt and replaced whenever the branch changes; the
-commit that added it is the one it was built from.
+gamepad. The first builds froze the USB keyboard when saving (ESC and F12
+stopped working); this build saves in about 1 ms instead of ~50 ms and should
+fix that -- not yet confirmed on hardware. This file is rebuilt and replaced
+whenever the branch changes; the commit that added it is the one it was built
+from.

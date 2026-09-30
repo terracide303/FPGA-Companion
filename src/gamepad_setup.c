@@ -36,7 +36,7 @@
 #include "debug.h"
 #include "mcu_hw.h"
 
-#define GP_MAX_PADS     8   // saved setups
+#define GP_MAX_PADS     4   // saved setups: must fit one 256-byte flash page
 #define GP_MAX_SLOTS    4   // gamepads tracked at once
 #define GP_REPORT_MAX  64   // longest report looked at
 
