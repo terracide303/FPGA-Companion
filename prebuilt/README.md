@@ -19,6 +19,7 @@ fits the RP2040's RAM. Wired USB pads only.
 **Install:** hold BOOTSEL, plug the Pico into a computer, copy the `.uf2` onto
 the `RPI-RP2` drive.
 
-**Status:** experimental. Tested on hardware 2026-09-30 (setup, save, power
-cycle). This file is rebuilt and replaced whenever the branch changes; the
+**Status:** experimental. On hardware 2026-09-30: setup and save work on one
+gamepad. Not yet confirmed: keeping the setup over a power cycle, and ESC
+closing the OSD after "Saved". This file is rebuilt and replaced whenever the branch changes; the
 commit that added it is the one it was built from.
