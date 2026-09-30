@@ -46,6 +46,7 @@ target_sources(app PRIVATE
     ../telnetd.c
     ../hidparser.c
    	../hid.c
+   	../gamepad_setup.c
    	../inifile.c
    	../menu.c
    	../sdc.c

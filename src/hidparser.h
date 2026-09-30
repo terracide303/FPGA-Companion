@@ -59,6 +59,8 @@ typedef struct {
 	uint8_t map_checked : 1;  // 1=already checked
 	uint8_t _reserved_flags : 6;
 
+	uint16_t vid, pid;        // USB ids, used by gamepad_setup
+
 } hid_report_t;
 
 bool parse_report_descriptor(const uint8_t *rep, uint16_t rep_size, hid_report_t *conf, uint16_t *rbytes);

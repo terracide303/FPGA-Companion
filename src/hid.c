@@ -11,6 +11,7 @@
 
 #include <string.h>  // for memcpy
 #include "usb_controller_maps.h"
+#include "gamepad_setup.h"
 #include "ps2helper.h"
 
 #include "hid2latin1.h"
@@ -913,7 +914,25 @@ void hid_parse(const hid_report_t *report, hid_state_t *state, uint8_t const* da
       mouse_parse(report, &state->mouse, data, len);
     
     if(report->type == REPORT_TYPE_JOYSTICK) {
-      if (report->map_found && report->map) {
+      uint8_t joy, ax, ay, btn_extra;
+      struct hid_joystick_state_S *js = &state->joystick;
+
+      // the "Setup Gamepad" dialog takes the reports while it runs
+      if(gamepad_setup_feed(report, data, len))
+	return;
+
+      if(gamepad_setup_apply(report, data, len, &joy, &ax, &ay, &btn_extra)) {
+	// a saved setup overrides the automatic mapping
+	if(joy != js->last_state || ax != js->last_state_x ||
+	   ay != js->last_state_y || btn_extra != js->last_state_btn_extra) {
+	  js->last_state = joy;
+	  js->last_state_x = ax;
+	  js->last_state_y = ay;
+	  js->last_state_btn_extra = btn_extra;
+	  joystick_push(js->js_index, joy, ax, ay, btn_extra);
+	}
+      }
+      else if (report->map_found && report->map) {
         // use SDL
         parse_with_sdl_mapping(report, &state->joystick, data, len, report->map);
       }

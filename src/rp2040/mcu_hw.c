@@ -484,6 +484,8 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
     if(parse_report_descriptor(desc_report, desc_len, &hid_device[idx].rep, NULL)) {
       hid_device[idx].dev_addr = dev_addr;
       hid_device[idx].instance = instance;
+      hid_device[idx].rep.vid = desc.device.idVendor;
+      hid_device[idx].rep.pid = desc.device.idProduct;
       if(hid_device[idx].rep.type == REPORT_TYPE_JOYSTICK)
 	      hid_device[idx].state.joystick.js_index = hid_allocate_joystick();
     } else

@@ -3,6 +3,7 @@ file(GLOB U8G2_SRC ../../u8g2/csrc/*.c)
 idf_component_register(SRCS
 	"../../main.c"
 	"../../hid.c"
+	"../../gamepad_setup.c"
 	"../../hidparser.c"
 	"../../sysctrl.c"
 	"../../sdc.c"

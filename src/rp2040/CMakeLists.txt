@@ -75,6 +75,7 @@ add_executable(${PROJECT}
 	../sysctrl.c
 	../hidparser.c
 	../hid.c
+	../gamepad_setup.c
 	../sdc.c
 	../osd_u8g2.c
 	../menu.c

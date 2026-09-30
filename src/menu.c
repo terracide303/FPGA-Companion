@@ -36,6 +36,7 @@
 #ifdef ENABLE_BLUETOOTH
 #include "bluetooth.h"
 #endif
+#include "gamepad_setup.h"
 
 // this is the u8g2_font_helvR08_te with any trailing
 // spaces removed
@@ -73,6 +74,9 @@ typedef struct config_custom_S {
   
   // Pointer to function that draws the custom contents
   void (*draw)(void); 
+
+  // Optional: gets menu events first. Returns true if it consumed them.
+  bool (*event)(int event);
   
 } config_custom_t;
 
@@ -1120,6 +1124,11 @@ void menu_do(int event) {
   menu_debugf("do %d", event);
   
   if(event)  {
+    // custom dialogs may handle the events themselves
+    if(menu_state->type == MENU_TYPE_CUSTOM && menu_state->custom->event &&
+       menu_state->custom->event(event))
+      event = MENU_EVENT_NONE;   // consumed, just redraw below
+
     if(event == MENU_EVENT_TOGGLE) {
       if(!osd_is_visible())
 	osd_enable(OSD_VISIBLE);
@@ -1185,6 +1194,7 @@ static void menu_timer(__attribute__((unused)) TimerHandle_t pxTimer) {
 }
 
 static const config_menu_t system_menu_main;
+static void gamepad_menu_append(config_menu_t *menu);
 
 // check if menu is the system menu or a submenu of it
 static bool menu_is_systemmenu(void) {
@@ -1292,6 +1302,9 @@ void menu_init(void) {
 
   // a config was loaded, use that
   menu_debugf("Using configured menu");
+
+  gamepad_setup_init();
+  gamepad_menu_append(cfg->menu);
 
   menu_debugf("Setting up variables");
   menu_setup_variables();
@@ -1436,6 +1449,143 @@ void menu_button_state(unsigned char state) {
       prev_state = state;
     }
   }
+}
+
+/* ================= gamepad setup =================== */
+
+/*  "Setup Gamepad" and "Remove Gamepad Setup" are appended to the
+    core's main menu. The learning itself is in gamepad_setup.c. */
+
+static void gamepad_draw_lines(const char *l1, const char *l2, const char *l3) {
+  if(l1) u8g2_DrawStr(&u8g2, 2, MENU_LINE_Y + 1*MENU_ENTRY_H, l1);
+  if(l2) u8g2_DrawStr(&u8g2, 2, MENU_LINE_Y + 2*MENU_ENTRY_H, l2);
+  if(l3) u8g2_DrawStr(&u8g2, 2, MENU_LINE_Y + 3*MENU_ENTRY_H, l3);
+}
+
+static void gamepad_draw(void) {
+  const gamepad_setup_status_t *st = gamepad_setup_status();
+  static char str[32];
+
+  switch(st->phase) {
+  case GP_PHASE_IDLE:
+    gamepad_draw_lines("Release all buttons", "and wait ...", NULL);
+    break;
+  case GP_PHASE_PRESS:
+    if(st->mode == GP_MODE_REMOVE)
+      gamepad_draw_lines("Press any button on the", "gamepad to remove its", "setup. ESC = cancel");
+    else {
+      sprintf(str, "Press %s", gamepad_setup_ctrl_name(st->step));
+      gamepad_draw_lines(str, "ESC = skip this one", NULL);
+    }
+    break;
+  case GP_PHASE_RELEASE:
+    gamepad_draw_lines("OK, now release it", NULL, NULL);
+    break;
+  case GP_PHASE_SAVED:
+    sprintf(str, "Saved for %04x:%04x", st->vid, st->pid);
+    gamepad_draw_lines(str, "It is used from now on.", "Press ESC to close");
+    break;
+  case GP_PHASE_REMOVED:
+    gamepad_draw_lines("Setup removed.", "Auto-detect is back.", "Press ESC to close");
+    break;
+  case GP_PHASE_NOTFOUND:
+    gamepad_draw_lines("This gamepad has no", "saved setup.", "Press ESC to close");
+    break;
+  case GP_PHASE_FAILED:
+    gamepad_draw_lines("Could not write to", "the SD card.", "Press ESC to close");
+    break;
+  default:
+    gamepad_draw_lines("Cancelled.", "Press ESC to close", NULL);
+    break;
+  }
+}
+
+static bool gamepad_event(int event) {
+  const gamepad_setup_status_t *st = gamepad_setup_status();
+  bool running = st->phase >= GP_PHASE_IDLE && st->phase <= GP_PHASE_RELEASE;
+
+  // redraw requests from the setup itself
+  if(event == MENU_EVENT_NONE) return false;
+
+  // closing the OSD cancels the setup and leaves the dialog
+  if(event == MENU_EVENT_TOGGLE) {
+    gamepad_setup_cancel();
+    menu_pop();
+    return false;
+  }
+
+  if(event == MENU_EVENT_KEY_RELEASE) return true;
+
+  if(running) {
+    if(event == MENU_EVENT_BACK) {
+      if(st->mode == GP_MODE_SETUP && st->phase == GP_PHASE_PRESS)
+	gamepad_setup_skip();
+      else {
+	gamepad_setup_cancel();
+	menu_pop();
+      }
+    }
+    return true;   // nothing else does anything while learning
+  }
+
+  // finished: ESC or ENTER closes the dialog
+  if(event == MENU_EVENT_BACK || event == MENU_EVENT_SELECT)
+    menu_pop();
+  return true;
+}
+
+static int gamepad_length(void) { return 0; }
+
+static const config_custom_t gamepad_setup_dlg = {
+  .label = "Setup Gamepad",
+  .length = gamepad_length,
+  .draw = gamepad_draw,
+  .event = gamepad_event
+};
+
+static const config_custom_t gamepad_remove_dlg = {
+  .label = "Remove Gamepad Setup",
+  .length = gamepad_length,
+  .draw = gamepad_draw,
+  .event = gamepad_event
+};
+
+static void gamepad_open(const config_custom_t *dlg, int mode) {
+  menu_push();
+  menu_state->type = MENU_TYPE_CUSTOM;
+  menu_state->custom = dlg;
+  menu_state->selected = 0;
+  menu_state->scroll = 0;
+  gamepad_setup_start(mode);
+}
+
+static void gamepad_setup_func(void)  { gamepad_open(&gamepad_setup_dlg, GP_MODE_SETUP); }
+static void gamepad_remove_func(void) { gamepad_open(&gamepad_remove_dlg, GP_MODE_REMOVE); }
+
+static const config_action_command_t gamepad_setup_exec = {
+  .code = CONFIG_ACTION_COMMAND_EXEC, .exec = gamepad_setup_func };
+static const config_action_command_t gamepad_remove_exec = {
+  .code = CONFIG_ACTION_COMMAND_EXEC, .exec = gamepad_remove_func };
+static const config_action_t gamepad_setup_action = {
+  .name = "gamepad_setup", .commands = (config_action_command_t*)&gamepad_setup_exec };
+static const config_action_t gamepad_remove_action = {
+  .name = "gamepad_remove", .commands = (config_action_command_t*)&gamepad_remove_exec };
+static const config_button_t gamepad_setup_btn = {
+  .label = "Setup Gamepad", .action = (config_action_t*)&gamepad_setup_action };
+static const config_button_t gamepad_remove_btn = {
+  .label = "Remove Gamepad Setup", .action = (config_action_t*)&gamepad_remove_action };
+
+static config_menu_entry_t gamepad_remove_entry = {
+  .type = CONFIG_MENU_ENTRY_BUTTON, .button = (config_button_t*)&gamepad_remove_btn };
+static config_menu_entry_t gamepad_setup_entry = {
+  .type = CONFIG_MENU_ENTRY_BUTTON, .button = (config_button_t*)&gamepad_setup_btn,
+  .next = &gamepad_remove_entry };
+
+// append the two entries to the end of the core's main menu
+static void gamepad_menu_append(config_menu_t *menu) {
+  config_menu_entry_t **e = &menu->entries;
+  while(*e) e = &(*e)->next;
+  *e = &gamepad_setup_entry;
 }
 
 /* ================= system menu =================== */
