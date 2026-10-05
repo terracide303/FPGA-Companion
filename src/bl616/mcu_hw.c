@@ -842,6 +842,10 @@ void usbh_hid_run(struct usbh_hid *hid_class)
       return;
     }
 
+    // USB ids, so a gamepad setup saved for this model is found (gamepad_setup.c)
+    usb->hid_info[i].report.vid = hid_class->hport->device_desc.idVendor;
+    usb->hid_info[i].report.pid = hid_class->hport->device_desc.idProduct;
+
     usb->hid_info[i].stop = 0;
     usb->hid_info[i].state = STATE_DETECTED;
   }

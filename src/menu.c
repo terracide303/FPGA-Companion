@@ -1453,8 +1453,9 @@ void menu_button_state(unsigned char state) {
 
 /* ================= gamepad setup =================== */
 
-/*  "Setup Gamepad" and "Remove Gamepad Setup" are appended to the
-    core's main menu. The learning itself is in gamepad_setup.c. */
+/*  "Gamepad" is appended to the core's main menu, with "Configure" and
+    "Forget Configuration" under it. The learning itself is in
+    gamepad_setup.c. */
 
 static void gamepad_draw_lines(const char *l1, const char *l2, const char *l3) {
   if(l1) u8g2_DrawStr(&u8g2, 2, MENU_LINE_Y + 1*MENU_ENTRY_H, l1);
@@ -1472,7 +1473,7 @@ static void gamepad_draw(void) {
     break;
   case GP_PHASE_PRESS:
     if(st->mode == GP_MODE_REMOVE)
-      gamepad_draw_lines("Press any button on the", "gamepad to remove its", "setup. ESC = cancel");
+      gamepad_draw_lines("Press any button on the", "gamepad to forget its", "setup. ESC = cancel");
     else {
       sprintf(str, "Press %s", gamepad_setup_ctrl_name(st->step));
       gamepad_draw_lines(str, "ESC = skip this one", NULL);
@@ -1486,7 +1487,7 @@ static void gamepad_draw(void) {
     gamepad_draw_lines(str, "It is used from now on.", "Press ESC to close");
     break;
   case GP_PHASE_REMOVED:
-    gamepad_draw_lines("Setup removed.", "Auto-detect is back.", "Press ESC to close");
+    gamepad_draw_lines("Configuration forgotten.", "Auto-detect is back.", "Press ESC to close");
     break;
   case GP_PHASE_NOTFOUND:
     gamepad_draw_lines("This gamepad has no", "saved setup.", "Press ESC to close");
@@ -1541,14 +1542,14 @@ static bool gamepad_event(int event) {
 static int gamepad_length(void) { return 0; }
 
 static const config_custom_t gamepad_setup_dlg = {
-  .label = "Setup Gamepad",
+  .label = "Configure Gamepad",
   .length = gamepad_length,
   .draw = gamepad_draw,
   .event = gamepad_event
 };
 
 static const config_custom_t gamepad_remove_dlg = {
-  .label = "Remove Gamepad Setup",
+  .label = "Forget Gamepad",
   .length = gamepad_length,
   .draw = gamepad_draw,
   .event = gamepad_event
@@ -1575,9 +1576,9 @@ static const config_action_t gamepad_setup_action = {
 static const config_action_t gamepad_remove_action = {
   .name = "gamepad_remove", .commands = (config_action_command_t*)&gamepad_remove_exec };
 static const config_button_t gamepad_setup_btn = {
-  .label = "Setup Gamepad", .action = (config_action_t*)&gamepad_setup_action };
+  .label = "Configure", .action = (config_action_t*)&gamepad_setup_action };
 static const config_button_t gamepad_remove_btn = {
-  .label = "Remove Gamepad Setup", .action = (config_action_t*)&gamepad_remove_action };
+  .label = "Forget Configuration", .action = (config_action_t*)&gamepad_remove_action };
 
 static config_menu_entry_t gamepad_remove_entry = {
   .type = CONFIG_MENU_ENTRY_BUTTON, .button = (config_button_t*)&gamepad_remove_btn };
@@ -1585,11 +1586,17 @@ static config_menu_entry_t gamepad_setup_entry = {
   .type = CONFIG_MENU_ENTRY_BUTTON, .button = (config_button_t*)&gamepad_setup_btn,
   .next = &gamepad_remove_entry };
 
-// append the two entries to the end of the core's main menu
+// "Gamepad" in the core's main menu, with the two above under it
+static config_menu_t gamepad_menu = {
+  .label = "Gamepad", .entries = &gamepad_setup_entry };
+static config_menu_entry_t gamepad_menu_entry = {
+  .type = CONFIG_MENU_ENTRY_MENU, .menu = &gamepad_menu };
+
+// append "Gamepad" to the end of the core's main menu
 static void gamepad_menu_append(config_menu_t *menu) {
   config_menu_entry_t **e = &menu->entries;
   while(*e) e = &(*e)->next;
-  *e = &gamepad_setup_entry;
+  *e = &gamepad_menu_entry;
 }
 
 /* ================= system menu =================== */
